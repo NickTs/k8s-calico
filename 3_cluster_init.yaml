@@ -1,0 +1,107 @@
+---
+  - hosts: masters
+    remote_user: ansible
+    become: yes
+    become_method: sudo
+    become_user: root
+    connection: ssh
+
+    tasks:
+
+    - name: Create containerd config file
+      ansible.builtin.file:
+        path: "/etc/modules-load.d/containerd.conf"
+        state: "touch"
+
+    - name: Add config for containerd
+      blockinfile:
+        path: "/etc/modules-load.d/containerd.conf"
+        block: |
+              overlay
+              br_netfilter
+
+    - name: modprobe
+      shell: |
+              modprobe overlay
+              modprobe br_netfilter
+
+    - name: Intilizing Kubernetes Cluster
+      # command: kubeadm init   --pod-network-cidr=10.244.0.0/16   --control-plane-endpoint={{ ansible_default_ipv4.address }}  #--upload-certs  # --kubernetes-version=v1.25.0
+      command: kubeadm init --apiserver-advertise-address={{ ansible_default_ipv4.address }} --pod-network-cidr=192.168.0.0/16 --service-cidr=10.1.0.0/16 --control-plane-endpoint={{ ansible_default_ipv4.address }}
+      run_once: true
+      delegate_to: "{{ ansible_default_ipv4.address }}"  
+  
+    - pause: seconds=20
+ 
+    - name: Create directory for kube config.
+      become_user: ansible
+      become_method: sudo
+      become: yes
+      file: 
+        path: /home/{{ansible_user }}/.kube
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: 0755
+ 
+    - name: Copy /etc/kubernetes/admin.conf to user's home directory /home/{{ ansible_user }}/.kube/config
+      become_user: root
+      become_method: sudo
+      become: yes
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/{{ ansible_user }}/.kube/config
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+ 
+    - pause: seconds=10
+ 
+    - name: Remove the cache directory.
+      become_user: ansible
+      become_method: sudo
+      become: yes
+      file: 
+        path: /home/{{ ansible_user }}/.kube/cache
+        state: absent
+ 
+    # - name: Create Pod Network & RBAC.
+    #   become_user: ansible
+    #   become_method: sudo
+    #   become: yes
+    #   command: "{{ item }}"
+    #   with_items: 
+    #      - https://raw.githubusercontent.com/projectcalico/calico/v3.26.0/manifests/calico.yaml
+    #     #  - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/tigera-operator.yaml
+    #     #  - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/custom-resources.yaml
+ 
+    - name: Install calico Pod network
+      become_user: ansible
+      become_method: sudo
+      become: yes
+      shell:  kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+      args:
+        chdir: $HOME
+
+    # - name: Install Pod network
+    #   become_user: ansible
+    #   become_method: sudo
+    #   become: yes
+    #   shell: kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
+    #   #shell: kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+    #   args:
+    #     chdir: $HOME
+
+    # - pause: seconds=40
+ 
+    # - name: Get the token for joining the nodes with Kuberentes master.
+    #   shell: kubeadm token create  --print-join-command
+    #   register: kubernetes_join_command
+    #   ignore_errors: true
+ 
+    # - debug:
+    #     msg: "{{ kubernetes_join_command.stdout }}"
+ 
+    # - name: Copy join command to local file.
+    #   local_action: copy content="{{ kubernetes_join_command.stdout_lines[0] }}" dest="/tmp/kubernetes_join_command" mode=0777

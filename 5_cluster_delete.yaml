@@ -1,0 +1,30 @@
+---
+  - hosts: masters, workers
+    remote_user: ansible
+    become: yes
+    become_method: sudo
+    become_user: root
+    gather_facts: yes
+    connection: ssh
+  
+    tasks:
+
+    #  - name: Deletinging Kubernetes Cluster
+    #    command: kubeadm reset #-f --cri-socket unix:///var/run/containerd/containerd.sock
+    #    run_once: true
+
+     - name: Delete content & directory
+       ansible.builtin.file:
+        state: absent
+        path: /home/{{ansible_user }}/.kube
+
+     - name: Remove kubernetes directorys
+       file:
+         path: '{{ item }}'
+         state: absent
+       with_items:
+         - /etc/kubernetes
+         - /var/lib/kubelet
+         - /run/kubernetes
+        #  - /var/lib/etcd
+       ignore_errors: true  
